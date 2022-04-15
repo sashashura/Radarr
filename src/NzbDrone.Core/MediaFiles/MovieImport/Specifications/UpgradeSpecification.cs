@@ -1,10 +1,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using NLog;
+using NzbDrone.Common.Extensions;
 using NzbDrone.Core.CustomFormats;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.Parser.Model;
+using NzbDrone.Core.Profiles;
 using NzbDrone.Core.Qualities;
 
 namespace NzbDrone.Core.MediaFiles.MovieImport.Specifications
@@ -20,45 +22,72 @@ namespace NzbDrone.Core.MediaFiles.MovieImport.Specifications
             _logger = logger;
         }
 
-        public Decision IsSatisfiedBy(LocalMovie localMovie, DownloadClientItem downloadClientItem)
+        public IEnumerable<Decision> IsSatisfiedBy(LocalMovie localMovie, DownloadClientItem downloadClientItem)
         {
-            var qualityComparer = new QualityModelComparer(localMovie.Movie.Profile);
-            var preferredWordScore = GetCustomFormatScore(localMovie);
+            var profiles = localMovie.Movie.QualityProfiles.Value;
+            var files = localMovie.Movie.MovieFiles.Value;
 
-            if (localMovie.Movie.MovieFileId > 0)
+            if (files.Count == 0)
             {
-                var movieFile = localMovie.Movie.MovieFile;
+                yield return Decision.Accept();
+                yield break;
+            }
 
-                if (movieFile == null)
+            foreach (var file in files)
+            {
+                file.Movie = localMovie.Movie;
+
+                foreach (var profile in profiles)
                 {
-                    _logger.Trace("Unable to get movie file details from the DB. MovieId: {0} MovieFileId: {1}", localMovie.Movie.Id, localMovie.Movie.MovieFileId);
-                    return Decision.Accept();
+                    yield return Calculate(profile, localMovie, file);
                 }
+            }
+        }
 
-                var qualityCompare = qualityComparer.Compare(localMovie.Quality.Quality, movieFile.Quality.Quality);
+        private Decision Calculate(Profile profile, LocalMovie localMovie, MovieFile file)
+        {
+            var qualityComparer = new QualityModelComparer(profile);
+            var preferredWordScore = GetCustomFormatScore(profile, localMovie);
 
-                if (qualityCompare < 0)
-                {
-                    _logger.Debug("This file isn't a quality upgrade for movie. Skipping {0}", localMovie.Path);
-                    return Decision.Reject("Not a quality upgrade for existing movie file(s)");
-                }
+            // Check to see if the existing file is valid for this profile. if not, don't count against this release
+            var qualityIndex = profile.GetIndex(file.Quality.Quality);
+            var qualityOrGroup = profile.Items[qualityIndex.Index];
 
-                movieFile.Movie = localMovie.Movie;
+            if (!qualityOrGroup.Allowed)
+            {
+                return Decision.Accept();
+            }
 
-                var customFormats = _customFormatCalculationService.ParseCustomFormat(movieFile);
-                var movieFileCustomFormatScore = localMovie.Movie.Profile.CalculateCustomFormatScore(customFormats);
+            var movieFile = file;
 
-                if (qualityCompare == 0 && preferredWordScore < movieFileCustomFormatScore)
-                {
-                    _logger.Debug("This file isn't a custom format upgrade for movie. Skipping {0}", localMovie.Path);
-                    return Decision.Reject("Not a custom format upgrade for existing movie file(s)");
-                }
+            if (movieFile == null)
+            {
+                _logger.Trace("Unable to get movie file details from the DB. MovieId: {0} MovieFileId: {1}", localMovie.Movie.Id, file.Id);
+                return Decision.Accept();
+            }
+
+            var qualityCompare = qualityComparer.Compare(localMovie.Quality.Quality, movieFile.Quality.Quality);
+
+            if (qualityCompare < 0)
+            {
+                _logger.Debug("This file isn't a quality upgrade for movie. Skipping {0}", localMovie.Path);
+                return Decision.Reject("Not a quality upgrade for existing movie file(s)", profile.Id);
+            }
+
+            file.Movie = localMovie.Movie;
+            var customFormats = _customFormatCalculationService.ParseCustomFormat(file);
+            var movieFileCustomFormatScore = profile.CalculateCustomFormatScore(customFormats);
+
+            if (qualityCompare == 0 && preferredWordScore < movieFileCustomFormatScore)
+            {
+                _logger.Debug("This file isn't a custom format upgrade for movie. Skipping {0}", localMovie.Path);
+                return Decision.Reject("Not a custom format upgrade for existing movie file(s)", profile.Id);
             }
 
             return Decision.Accept();
         }
 
-        private int GetCustomFormatScore(LocalMovie localMovie)
+        private int GetCustomFormatScore(Profile profile, LocalMovie localMovie)
         {
             var movie = localMovie.Movie;
             var fileFormats = new List<CustomFormat>();
@@ -82,7 +111,7 @@ namespace NzbDrone.Core.MediaFiles.MovieImport.Specifications
 
             var formats = fileFormats.Union(folderFormats.Union(clientFormats)).ToList();
 
-            return movie.Profile.CalculateCustomFormatScore(formats);
+            return profile.CalculateCustomFormatScore(formats);
         }
     }
 }

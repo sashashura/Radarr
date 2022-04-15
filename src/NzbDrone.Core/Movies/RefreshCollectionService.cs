@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NLog;
 using NzbDrone.Common.Instrumentation.Extensions;
@@ -110,7 +111,7 @@ namespace NzbDrone.Core.Movies
                     {
                         TmdbId = m.TmdbId,
                         Title = m.Title,
-                        ProfileId = collection.QualityProfileId,
+                        QualityProfileIds = collection.QualityProfileIds,
                         RootFolderPath = collection.RootFolderPath,
                         MinimumAvailability = collection.MinimumAvailability,
                         AddOptions = new AddMovieOptions
