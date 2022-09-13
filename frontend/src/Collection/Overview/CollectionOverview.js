@@ -126,9 +126,6 @@ class CollectionOverview extends Component {
     const contentHeight = getContentHeight(rowHeight, isSmallScreen);
     const overviewHeight = contentHeight - titleRowHeight - posterHeight;
 
-    console.log(this._swiperNextRef);
-    console.log(this._swiperPrevRef);
-
     return (
       <div className={styles.container}>
         <div className={styles.content}>
