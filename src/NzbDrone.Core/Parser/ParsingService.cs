@@ -318,7 +318,8 @@ namespace NzbDrone.Core.Parser
                     case MappingResultType.TitleNotFound:
                         return $"Could not find {RemoteMovie.ParsedMovieInfo.PrimaryMovieTitle}";
                     case MappingResultType.WrongYear:
-                        return $"Failed to map movie, expected year {RemoteMovie.Movie.MovieMetadata.Value.Year}, but found {RemoteMovie.ParsedMovieInfo.Year}";
+                        var comma = RemoteMovie.Movie.MovieMetadata.Value.SecondaryYear.Count ?? ", " : "";
+                        return $"Failed to map movie, expected years {RemoteMovie.Movie.MovieMetadata.Value.Year}{comma}{RemoteMovie.Movie.MovieMetadata.Value.SecondaryYear}, but found {RemoteMovie.ParsedMovieInfo.Year}";
                     case MappingResultType.WrongTitle:
                         var comma = RemoteMovie.Movie.MovieMetadata.Value.AlternativeTitles.Count > 0 ? ", " : "";
                         return
